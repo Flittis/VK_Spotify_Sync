@@ -5,19 +5,21 @@ const request = require('request');
 //       Configs
 
 let config = {
-    'spotifyClientId': '  ', // Spotify App Client Id
-    'spotifyClientSecret': '  ', // Spotify App Client Secret
-    'spotifyRefreshToken': '  ', // Spotify Refresh Token
+    'spotifyClientId': ' ', // Spotify App Client Id
+    'spotifyClientSecret': ' ', // Spotify App Client Secret
+    'spotifyRefreshToken': ' ', // Spotify Refresh Token
     'spotifyAccessToken': null, // There gonna be written your Spotify Access Token
     'spotifyLastPlaying': null, // There your Spotify Last Played Track
-    'vkAccessToken': '  ' // Your VK Access Token
+    'vkAccessToken': ' ', // Your VK Access Token
+    'vkUserId': ' ' // Your VK Id
 }
 
 let links = { // Important links
     'spotifyPlaying': 'https://api.spotify.com/v1/me/player/currently-playing',
     'spotifyRefresh': 'https://accounts.spotify.com/api/token',
     'vkSearch': 'https://api.vk.com/method/audio.search',
-    'vkSetBroadcast': 'https://api.vk.com/method/audio.setBroadcast'
+    'vkSetBroadcast': 'https://api.vk.com/method/audio.setBroadcast',
+    'vkSendMessage': 'https://api.vk.com/method/messages.send'
 }
 
 
@@ -29,7 +31,7 @@ let spotify = {
               let options = { url: links.spotifyPlaying, headers: { 'Authorization': 'Bearer ' + access_token }, json: true };
 
               request.get(options, function(error, response, body) {
-                      if(error || !body || !body.item) return reject({'error': error ? error : 'Unknown error.'});
+                      if(error || !body || !body.item) return reject({'error': error ? error : 'Nothing playing.'});
 
                       resolve({ 'audio': body.item.artists[0].name + ' - ' + body.item.name.split(" (")[0], 'playing': body.is_playing, 'id': body.item.id });
               })
@@ -53,7 +55,7 @@ let vk = {
               let options = { url: links.vkSearch, qs: { auto_complete: 1, count: 1, q: query, access_token: access_token, v: 5.1 }, json: true };
 
               request.get(options, function(error, response, body) {
-                      if(error || body.error || !body || !body.response || !body.response.items || !body.response.items[0]) return reject({'error': error ? error : body.error ? body.error : 'Unknown error.'});
+                      if(error || body.error || !body || !body.response || !body.response.items || !body.response.items[0]) return reject({'error': error ? error : body.error ? body.error : 'This track wasn\'t found.'});
 
                       resolve({'audio': body.response.items[0].artist + ' - ' + body.response.items[0].title, id: `${body.response.items[0].owner_id}_${body.response.items[0].id}`});
               })
@@ -68,25 +70,34 @@ let vk = {
 
                       resolve(body);
               })
+        })},
+    sendMessage: (peer, message, access_token) => { return new Promise((resolve, reject) => {
+              if(!access_token || !peer || !message) return reject({'error': 'One of parameters is not defined.'});
+              let options = { url: links.vkSendMessage, qs: { peer_id: peer, message: message, access_token: access_token, v: 5.38 }, json: true };
+
+              request.get(options, function(error, response, body) {
+                      if(error || !body || body.error) return reject({'error': error ? error : body.error ? body.error : 'Unknown error.'});
+
+                      resolve(body);
+              })
         })}
 }
 
 let loadMusic = () => {
-      spotify.playing(config.spotifyAccessToken).then((res) => { // Check now playing status in Spotify
-          if(res.playing == false) config.spotifyLastPlaying = null; // If nothing playing, clear last track
+      spotify.playing(config.spotifyAccessToken).then((res) => {
+          if(config.spotifyLastPlaying != res.id && res.playing) vk.searchAudio(res.audio, config.vkAccessToken).then((r) => {
+                config.spotifyLastPlaying = res.id;
 
-          if(config.spotifyLastPlaying != res.id) vk.searchAudio(res.audio, config.vkAccessToken).then((r) => { // If last track is not equal now playing track - search music in VK
-                config.spotifyLastPlaying = res.id; // Set last track to now playing track
-
-                vk.setBroadcast(r.id, config.vkAccessToken) // Set track to the status
-                  .catch((err) => { console.log(err); });
-          }).catch((err) => { console.log(err); });
-      }).catch((err) => { console.log(err); })
+                vk.setBroadcast(r.id, config.vkAccessToken).catch((err) => { debug('VK SetBroadcast Error: ' + err.error.error.error_msg); });
+          }).catch((err) => { debug('VK Search Error: ' + err.error); config.spotifyLastPlaying = res.id; });
+      }).catch((err) => { if(err.error != 'Nothing playing.') debug('Spotify Get Track Error: ' + err.error); })
 }
 
 
 
 //      Working Part
 
-spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; setInterval(loadMusic, 0.1 * 60 * 1000); }).catch((err) => { console.log(err); });
-setInterval(() => { spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; }) }, 100 * 60 * 1000);
+spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; setInterval(loadMusic, 0.3 * 60 * 1000); }).catch((err) => { console.log(err); });
+setInterval(() => { spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; }) }, 50 * 60 * 1000);
+
+let debug = (message) => { vk.sendMessage(config.vkUserId, '[SPOTSYNC] ' + message, config.vkAccessToken); }
