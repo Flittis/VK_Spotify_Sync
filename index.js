@@ -104,4 +104,4 @@ let loadMusic = () => {
 spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; setInterval(loadMusic, 0.1 * 60 * 1000); }).catch((err) => { console.log(err); });
 setInterval(() => { spotify.refresh(config.spotifyRefreshToken).then((res) => { config.spotifyAccessToken = res.access_token; }) }, 50 * 60 * 1000);
 
-let debug = (message) => { console.log('[SPOTSYNC] ' + message); vk.sendMessage(config.vkId, '[SPOTSYNC] ' + message, config.vkAccessToken); }
+let debug = (message) => { console.log('[SPOTSYNC] ' + message); vk.sendMessage(config.vkId, '[SPOTSYNC] ' + (typeof message == 'object' ? JSON.stringify(message) : message), config.vkAccessToken); }
